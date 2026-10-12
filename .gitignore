@@ -1,0 +1,25 @@
+# ==============================================================================
+# 🙈 ARCHIVOS IGNORADOS POR GIT
+# ==============================================================================
+
+# 1. Dependencias descargadas (ocupan cientos de MB y se regeneran con 'npm install')
+node_modules/
+backend/node_modules/
+
+# 2. Base de datos local (evitamos subir datos de prueba y bloqueos de archivos binarios)
+*.db
+*.sqlite
+backend/mensajes.db
+
+# 3. Variables de entorno (claves secretas, credenciales)
+.env
+.env.*
+
+# 4. Logs y temporales
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 5. Archivos del sistema operativo
+.DS_Store
+Thumbs.db

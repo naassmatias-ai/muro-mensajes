@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <!-- Permite que la página se adapte correctamente a pantallas de celulares -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Muro de Mensajes Global</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="contenedor">
+    <header>
+      <h1>🌍 Muro de Mensajes Global</h1>
+      <p>Deja un mensaje para que cualquiera en el mundo pueda leerlo.</p>
+    </header>
+
+    <!-- FORMULARIO: Aquí el usuario escribe sus datos -->
+    <section class="tarjeta-formulario">
+      <h2>Publicar un mensaje</h2>
+      <form id="formulario-mensaje">
+        <div class="campo">
+          <label for="autor">Tu Nombre o Alias:</label>
+          <input 
+            type="text" 
+            id="autor" 
+            name="autor" 
+            placeholder="Ej: Juan" 
+            required 
+            maxlength="40"
+          >
+        </div>
+
+        <div class="campo">
+          <label for="contenido">Mensaje:</label>
+          <textarea 
+            id="contenido" 
+            name="contenido" 
+            rows="3" 
+            placeholder="Escribe lo que quieras compartir..." 
+            required
+            maxlength="280"
+          ></textarea>
+        </div>
+
+        <button type="submit" id="boton-enviar">Publicar en el Muro</button>
+      </form>
+    </section>
+
+    <!-- LISTA DE MENSAJES: Aquí se cargarán los mensajes recibidos -->
+    <section class="tarjeta-muro">
+      <h2>Mensajes Recientes</h2>
+      <div id="contenedor-mensajes">
+        <p class="mensaje-vacio">Cargando mensajes...</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- Enlace al archivo de interactividad JavaScript -->
+  <script src="app.js"></script>
+</body>
+</html>
