@@ -1,78 +1,92 @@
 // ==============================================================================
-// ⚙️ BACKEND CON BASE DE DATOS SQL (SQLite en Node.js)
+// ⚙️ BACKEND HÍBRIDO: Soporta Base de Datos en la Nube (PostgreSQL) o Local (SQLite)
 // ==============================================================================
 
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-// Usamos el motor nativo de SQLite integrado en Node.js
-const { DatabaseSync } = require("node:sqlite");
+const { Pool } = require("pg"); // Cliente para PostgreSQL en la nube
+const { DatabaseSync } = require("node:sqlite"); // Cliente para SQLite local
 
 const app = express();
-// En la nube (Render/Railway), el puerto lo asigna el proveedor mediante la variable de entorno PORT
 const PUERTO = process.env.PORT || 3000;
 
 // Configuración de middlewares
 app.use(cors());
 app.use(express.json());
-// Servimos los archivos visuales del frontend (HTML, CSS, JS) directamente desde el servidor
 app.use(express.static(path.join(__dirname, "../frontend")));
 
 // ==============================================================================
 // 💾 CONFIGURACIÓN DE LA BASE DE DATOS
 // ==============================================================================
-// Guardamos la base de datos en un archivo físico llamado 'mensajes.db'
-const rutaBaseDatos = path.join(__dirname, "mensajes.db");
-const db = new DatabaseSync(rutaBaseDatos);
+// Si configuramos la variable de entorno DATABASE_URL, usamos PostgreSQL en la nube.
+// Si no está configurada, usamos la base de datos SQLite local en tu computadora.
+let poolPostgres = null;
+let dbSqlite = null;
 
-console.log(`📦 Base de datos conectada en: ${rutaBaseDatos}`);
+if (process.env.DATABASE_URL) {
+  console.log("☁️  Modo NUBE detectado: Conectando a PostgreSQL remoto...");
+  poolPostgres = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false // Permite conexiones seguras SSL con proveedores cloud (Supabase, Neon, etc.)
+    }
+  });
 
-// Creamos la tabla 'mensajes' si aún no existe
-// Definimos las columnas: id (único), autor, contenido y fecha
-db.exec(`
-  CREATE TABLE IF NOT EXISTS mensajes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    autor TEXT NOT NULL,
-    contenido TEXT NOT NULL,
-    fecha TEXT NOT NULL
-  );
-`);
+  // Creamos la tabla 'mensajes' en PostgreSQL si no existe
+  poolPostgres.query(`
+    CREATE TABLE IF NOT EXISTS mensajes (
+      id SERIAL PRIMARY KEY,
+      autor TEXT NOT NULL,
+      contenido TEXT NOT NULL,
+      fecha TEXT NOT NULL
+    );
+  `).then(() => {
+    console.log("✅ Tabla 'mensajes' verificada en PostgreSQL.");
+  }).catch((err) => {
+    console.error("❌ Error al inicializar PostgreSQL:", err);
+  });
 
-// Si la base de datos está totalmente vacía, insertamos un mensaje inicial de bienvenida
-const conteo = db.prepare("SELECT COUNT(*) as total FROM mensajes").get();
-if (conteo.total === 0) {
-  const fechaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const insertarInicial = db.prepare(
-    "INSERT INTO mensajes (autor, contenido, fecha) VALUES (?, ?, ?)"
-  );
-  insertarInicial.run(
-    "Base de Datos SQLite",
-    "¡Hola! Este mensaje está guardado físicamente en la base de datos mensajes.db.",
-    fechaActual
-  );
+} else {
+  console.log("🖥️  Modo LOCAL detectado: Usando SQLite en mensajes.db...");
+  const rutaBaseDatos = path.join(__dirname, "mensajes.db");
+  dbSqlite = new DatabaseSync(rutaBaseDatos);
+
+  dbSqlite.exec(`
+    CREATE TABLE IF NOT EXISTS mensajes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      autor TEXT NOT NULL,
+      contenido TEXT NOT NULL,
+      fecha TEXT NOT NULL
+    );
+  `);
+  console.log(`✅ Base de datos SQLite conectada en: ${rutaBaseDatos}`);
 }
 
 // ==============================================================================
-// 📡 RUTAS DE LA API (Endpoints conectados a SQL)
+// 📡 RUTAS DE LA API (Endpoints)
 // ==============================================================================
 
-// RUTA 1: Obtener todos los mensajes (SELECT de SQL)
-app.get("/api/mensajes", (req, res) => {
+// RUTA 1: Obtener todos los mensajes (GET)
+app.get("/api/mensajes", async (req, res) => {
   try {
-    // Pedimos todos los mensajes ordenados del más antiguo al más nuevo
-    const consulta = db.prepare("SELECT * FROM mensajes ORDER BY id ASC");
-    const todosLosMensajes = consulta.all();
-    
-    console.log(`📥 GET /api/mensajes -> Enviando ${todosLosMensajes.length} mensajes desde la BD.`);
-    res.json(todosLosMensajes);
+    if (poolPostgres) {
+      // Consulta en PostgreSQL (Nube)
+      const resultado = await poolPostgres.query("SELECT * FROM mensajes ORDER BY id ASC");
+      return res.json(resultado.rows);
+    } else {
+      // Consulta en SQLite (Local)
+      const consulta = dbSqlite.prepare("SELECT * FROM mensajes ORDER BY id ASC");
+      return res.json(consulta.all());
+    }
   } catch (error) {
-    console.error("Error al consultar la base de datos:", error);
-    res.status(500).json({ error: "Error interno al leer la base de datos" });
+    console.error("Error al obtener los mensajes:", error);
+    res.status(500).json({ error: "Error al consultar la base de datos" });
   }
 });
 
-// RUTA 2: Guardar un nuevo mensaje (INSERT de SQL)
-app.post("/api/mensajes", (req, res) => {
+// RUTA 2: Guardar un nuevo mensaje (POST)
+app.post("/api/mensajes", async (req, res) => {
   try {
     const { autor, contenido } = req.body;
 
@@ -82,28 +96,34 @@ app.post("/api/mensajes", (req, res) => {
 
     const fechaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Consulta SQL preparada con signos de pregunta '?' para prevenir inyecciones SQL
-    const sentencia = db.prepare(
-      "INSERT INTO mensajes (autor, contenido, fecha) VALUES (?, ?, ?)"
-    );
+    if (poolPostgres) {
+      // Inserción en PostgreSQL usando marcadores $1, $2, $3 y RETURNING *
+      const resultado = await poolPostgres.query(
+        "INSERT INTO mensajes (autor, contenido, fecha) VALUES ($1, $2, $3) RETURNING *",
+        [autor.trim(), contenido.trim(), fechaActual]
+      );
+      console.log(`☁️  Guardado en PostgreSQL con ID #${resultado.rows[0].id}`);
+      return res.status(201).json(resultado.rows[0]);
 
-    // Ejecutamos la inserción en la base de datos física
-    const resultado = sentencia.run(autor.trim(), contenido.trim(), fechaActual);
-
-    // Creamos el objeto del mensaje guardado con el ID autogenerado
-    const nuevoMensaje = {
-      id: Number(resultado.lastInsertRowid),
-      autor: autor.trim(),
-      contenido: contenido.trim(),
-      fecha: fechaActual
-    };
-
-    console.log(`💾 POST /api/mensajes -> Guardado con ID #${nuevoMensaje.id} en la BD.`);
-    res.status(201).json(nuevoMensaje);
+    } else {
+      // Inserción en SQLite usando marcadores ?, ?, ?
+      const sentencia = dbSqlite.prepare(
+        "INSERT INTO mensajes (autor, contenido, fecha) VALUES (?, ?, ?)"
+      );
+      const resultado = sentencia.run(autor.trim(), contenido.trim(), fechaActual);
+      const nuevoMensaje = {
+        id: Number(resultado.lastInsertRowid),
+        autor: autor.trim(),
+        contenido: contenido.trim(),
+        fecha: fechaActual
+      };
+      console.log(`🖥️  Guardado en SQLite local con ID #${nuevoMensaje.id}`);
+      return res.status(201).json(nuevoMensaje);
+    }
 
   } catch (error) {
-    console.error("Error al insertar en la base de datos:", error);
-    res.status(500).json({ error: "Error interno al guardar en la base de datos" });
+    console.error("Error al guardar el mensaje:", error);
+    res.status(500).json({ error: "Error al guardar en la base de datos" });
   }
 });
 
@@ -112,7 +132,7 @@ app.post("/api/mensajes", (req, res) => {
 // ==============================================================================
 app.listen(PUERTO, () => {
   console.log(`\n==================================================`);
-  console.log(`🚀 Servidor backend con SQL listo en: http://localhost:${PUERTO}`);
-  console.log(`💾 Archivo físico de la BD: backend/mensajes.db`);
+  console.log(`🚀 Servidor backend escuchando en: http://localhost:${PUERTO}`);
+  console.log(`💾 Base de datos activa: ${poolPostgres ? 'PostgreSQL (Nube)' : 'SQLite (Local)'}`);
   console.log(`==================================================\n`);
 });
