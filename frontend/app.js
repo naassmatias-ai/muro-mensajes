@@ -2,8 +2,10 @@
 // 🌐 FRONTEND JAVASCRIPT: Conectado a la API REST (Backend)
 // ==============================================================================
 
-// URL de nuestro servidor backend local
-const API_URL = "http://localhost:3000/api/mensajes";
+// Si se abre localmente como archivo file:// apunta a localhost:3000; si se sirve en un servidor web/nube, usa la ruta relativa /api/mensajes
+const API_URL = window.location.protocol === "file:"
+  ? "http://localhost:3000/api/mensajes"
+  : "/api/mensajes";
 
 // Elementos de la interfaz gráfica
 const formulario = document.getElementById("formulario-mensaje");

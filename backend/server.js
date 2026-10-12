@@ -9,11 +9,14 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 
 const app = express();
-const PUERTO = 3000;
+// En la nube (Render/Railway), el puerto lo asigna el proveedor mediante la variable de entorno PORT
+const PUERTO = process.env.PORT || 3000;
 
 // Configuración de middlewares
 app.use(cors());
 app.use(express.json());
+// Servimos los archivos visuales del frontend (HTML, CSS, JS) directamente desde el servidor
+app.use(express.static(path.join(__dirname, "../frontend")));
 
 // ==============================================================================
 // 💾 CONFIGURACIÓN DE LA BASE DE DATOS
